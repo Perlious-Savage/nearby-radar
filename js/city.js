@@ -15,7 +15,11 @@ const ease = t => 1 - Math.pow(1 - t, 3);
 
 // Ground stack. Everything is flat, so these tiny offsets are what decide what
 // covers what. Sea is the floor; buildings start at zero.
-const Y = { sea: -1.4, land: -0.9, water: -0.6, beach: -0.45, park: -0.3, road: -0.15 };
+// Separation in METRES, not centimetres. These layers were 15 cm apart, which
+// was fine until the far field pushed the camera's far plane out to tens of
+// kilometres and destroyed depth precision: the base plane started winning and
+// the Gulf vanished. Metres of gap plus a logarithmic depth buffer fixes it.
+const Y = { sea: -14, land: -10, water: -6.5, beach: -4, park: -2.5, road: -1 };
 
 const C = {
   sky: 0x9fc4e8, horizon: 0xf6c98a, haze: 0xe9b98a,
@@ -30,7 +34,7 @@ export class City {
     this.spots = data.spots;
     this.onPick = () => {};
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -40,7 +44,7 @@ export class City {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog(C.haze, 4200, 20000);
 
-    this.camera = new THREE.PerspectiveCamera(46, 1, 1, 90000);
+    this.camera = new THREE.PerspectiveCamera(46, 1, 2, 60000);
 
     // Orbit state: the camera looks at `target` from `orbit` radians around it
     // at `pitch` and `dist`. Every camera move animates those three numbers.
@@ -71,13 +75,13 @@ export class City {
   // Vertex-coloured dome. Cheaper and sharper than a texture, and it gives the
   // horizon the warm band that sells the hour.
   buildSky() {
-    const geo = new THREE.SphereGeometry(40000, 32, 20);
+    const geo = new THREE.SphereGeometry(26000, 32, 20);
     const top = new THREE.Color(C.sky), low = new THREE.Color(C.horizon);
     const pos = geo.attributes.position;
     const col = new Float32Array(pos.count * 3);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
-      const t = Math.max(0, Math.min(1, (pos.getY(i) / 40000 + 0.08) / 0.55));
+      const t = Math.max(0, Math.min(1, (pos.getY(i) / 26000 + 0.08) / 0.55));
       c.copy(low).lerp(top, Math.pow(t, 0.75));
       col.set([c.r, c.g, c.b], i * 3);
     }

@@ -13,6 +13,12 @@ import { City } from './city.js';
 import { openState } from './hours.js';
 
 const KEY = 'nearby.v2';
+// Everyone who opens the link without a #crew= lands here, so one upload is
+// visible to every visitor. A random default meant the plain link put each
+// person alone in an empty crew, which is not what "shared" means. Private
+// crews still exist: any other code, reached by an Invite link, is separate.
+const PUBLIC_CREW = 'JBR';
+
 const BROKERS = [
   'wss://broker.hivemq.com:8884/mqtt',
   'wss://broker.emqx.io:8084/mqtt',
@@ -55,11 +61,11 @@ const rand = n => Math.random().toString(36).slice(2, 2 + n).toUpperCase();
 function identity() {
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.get('crew')) S.crew = hash.get('crew').toUpperCase().slice(0, 6);
-  if (!S.crew) S.crew = rand(4);
+  if (!S.crew) S.crew = PUBLIC_CREW;
   if (!S.handle) S.handle = 'guest' + Math.floor(Math.random() * 900 + 100);
   save();
   el.who.textContent = S.handle;
-  el.crew.textContent = S.crew;
+  el.crew.textContent = S.crew === PUBLIC_CREW ? `${S.crew} - public` : S.crew;
 }
 
 el.who.onclick = () => {
@@ -92,7 +98,7 @@ el.crew.onclick = () => {
   if (v?.trim()) {
     S.crew = v.trim().toUpperCase().slice(0, 6);
     save();
-    el.crew.textContent = S.crew;
+    el.crew.textContent = S.crew === PUBLIC_CREW ? `${S.crew} - public` : S.crew;
     transport.restart();
   }
 };
@@ -347,13 +353,10 @@ function card(s) {
 
   return `<article class="card${saved ? ' is-saved' : ''}" data-spot="${s.id}">
     <div class="card-in">
-      <header>
-        <h3>${esc(s.name)}</h3>
-        <span class="dist">${fmtDist(dist(s))}</span>
-      </header>
-      <p class="meta"><span class="kind k-${s.kind}">${s.kind}</span>${status}</p>
+      ${coverHTML(s)}
+      <p class="meta"><span class="kind k-${s.kind}">${s.kind}</span>${status}
+        <span class="dist">${fmtDist(dist(s))}</span></p>
       <p class="note">${esc(s.note)}</p>
-      ${shotsHTML(s.id, 3)}
       ${heat ? `<p class="heat">${heat} crew pin${heat > 1 ? 's' : ''}</p>` : ''}
       <div class="acts">
         <button data-act="save" class="${saved ? 'on' : ''}">${saved ? 'Saved' : 'Save'}</button>
@@ -395,8 +398,8 @@ function renderDetail(s) {
   el.dRoute.hidden = true;
   city?.showRoute(null);
   el.dMeta.textContent = s.kind === 'live' ? `added by ${s.by || 'the crew'}` : s.kind;
-  el.dShots.innerHTML = shotsHTML(s.id) ||
-    '<p class="noshots">No photos yet. Add the first one.</p>';
+  el.dShots.innerHTML = coverHTML(s) + (shotsHTML(s.id) ||
+    '<p class="noshots">No photos yet. Add the first one.</p>');
   el.dSave.textContent = S.saved[s.id] ? 'Saved' : 'Save';
   el.dSave.classList.toggle('on', !!S.saved[s.id]);
   el.sheet.hidden = false;
@@ -510,6 +513,25 @@ transport.onPhoto = async (msg) => {
   const spot = allSpots().find(s => s.id === shot.spot);
   log(msg.from, `added a photo of ${spot ? spot.name : 'a place'}`);
   render();
+};
+
+// Deterministic hue per place, so a card looks the same on every device and
+// every reload. Cheap, offline, and honestly not a photograph.
+const hueOf = id => {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return h;
+};
+
+const coverHTML = s => {
+  const shots = photos[s.id] || [];
+  const label = `<span class="covname">${esc(s.name)}</span>`;
+  const badge = shots.length > 1 ? `<span class="covcount">${shots.length}</span>` : '';
+  if (shots.length) {
+    return `<div class="cover"><img src="${shots[shots.length - 1].url}" alt="${esc(s.name)}">${label}${badge}</div>`;
+  }
+  return `<div class="cover art" style="--h:${hueOf(s.id)}">
+    <span class="covkind">${s.kind}</span>${label}</div>`;
 };
 
 const shotsHTML = (spotId, limit = 6) => {
