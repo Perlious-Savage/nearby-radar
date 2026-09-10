@@ -89,6 +89,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 
 .sheet{position:absolute;right:18px;bottom:18px;z-index:4;width:min(340px,calc(100% - 36px))}
 .sheet .x{position:absolute;top:14px;right:16px;color:var(--faint);font-size:20px;line-height:1}
+.sheet .bk{display:none}
 .sheet .x:hover{color:var(--ink)}
 .sheet h2{font-size:19px;padding-right:24px}
 .sheet .sub{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 0;font:400 11px/1 var(--mono);color:var(--dim)}
@@ -312,24 +313,39 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   .readout dd{font-size:17px;margin-top:3px}
   .readout .origin{display:none}
 
-  /* Bottom sheet. Capped well under the map's height: at 76svh it filled the
-     whole stage and hid the very place you had just tapped, which is the one
-     thing the sheet exists to point at. Two thirds of the map, no more. */
-  .sheet{left:0;right:0;bottom:0;width:auto;border-radius:16px 16px 0 0;padding:4px 4px 0;
-    max-height:min(32svh,64%);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-  .sheet>.in{border-radius:13px 13px 0 0;padding:12px 13px calc(12px + env(safe-area-inset-bottom))}
-  .sheet h2{font-size:16px;padding-right:26px}
-  .sheet .sub{gap:9px;margin-top:6px}
-  .sheet .note{font-size:12.5px;margin-top:7px}
-  .sheet .route{margin-top:8px;padding:7px 9px;font-size:10.5px}
-  .sheet .acts{flex-wrap:wrap;gap:6px;margin-top:10px}
-  .sheet .acts button{flex:1 1 0;min-width:0;min-height:38px;padding:8px 6px;font-size:11px}
-  .sheet .acts button.primary{padding-right:4px}
-  /* the cover is already on the card you tapped; in the sheet it is a strip */
-  .sheet .cover{height:64px;margin-bottom:7px}
-  .sheet .shots img{width:64px;height:48px}
-  .sheet .noshots{font-size:10.5px;margin-top:6px}
-  .sheet .x{top:11px;right:12px}
+  /* Detail is not an overlay here. The script moves it into the list column, so
+     it sits BELOW the map: the place you tapped stays visible above while you
+     read about it. Opening one hides the list, and the back button brings it
+     back, which is a screen you navigate rather than a panel that covers. */
+  .sheet{position:static;width:auto;max-height:none;overflow:visible;
+    border-radius:0;border:0;border-bottom:1px solid var(--hair);
+    padding:0 0 14px;margin:0 0 14px;background:none;backdrop-filter:none}
+  .sheet>.in{border-radius:13px;padding:13px 14px;background:var(--raise);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+  .sheet h2{font-size:18px;padding-right:0}
+  .sheet .sub{gap:10px;margin-top:6px}
+  .sheet .note{font-size:13.5px;margin-top:9px}
+  .sheet .route{margin-top:10px}
+  .sheet .acts{flex-wrap:wrap;gap:7px;margin-top:13px}
+  .sheet .acts button{flex:1 1 0;min-width:0;min-height:42px;padding:10px 6px;font-size:11.5px}
+  .sheet .acts button.primary{padding-right:5px}
+  .sheet .cover{height:132px;margin-bottom:10px}
+  .sheet .cover .covname{display:block}
+  .sheet .shots img{width:76px;height:58px}
+
+  /* Back button: a real target at the top of the screen, not a 20px glyph. */
+  .sheet .x{position:static;display:flex;align-items:center;font-size:12px;
+    color:var(--accent);padding:9px 13px;margin-bottom:9px;
+    border:1px solid rgba(110,231,183,.3);border-radius:999px;
+    font-family:var(--mono);letter-spacing:.04em;min-height:40px}
+  .sheet .bk{display:inline}
+  .sheet .xs{display:none}
+
+  /* Reading one place means reading one place. */
+  .detail-open .filters,
+  .detail-open .panel>.block,
+  .detail-open .panel>.stale,
+  .detail-open .panel>footer{display:none}
 
   .searchbox{font-size:16px}              /* 16px stops iOS zooming on focus */
   .card{margin-bottom:10px}
@@ -345,7 +361,6 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 @media (max-width:420px){
   .stage{height:44svh}
   .hint{bottom:calc(44svh + 10px)}
-  .sheet{max-height:min(30svh,62%)}
   .topbar .row{gap:5px}
   .tag{font-size:9.5px;padding:5px 7px}
   .readout dd{font-size:15px}

@@ -408,6 +408,8 @@ function renderDetail(s) {
   el.dSave.textContent = S.saved[s.id] ? 'Saved' : 'Save';
   el.dSave.classList.toggle('on', !!S.saved[s.id]);
   el.sheet.hidden = false;
+  placeSheet();
+  el.shell.classList.add('detail-open');
 }
 
 // ---------------------------------------------------------------- events
@@ -428,9 +430,11 @@ el.dPin.onclick = () => selected && pin(selected);
 $('dClose2').onclick = () => {
   el.sheet.hidden = true;
   el.dRoute.hidden = true;
+  el.shell.classList.remove('detail-open');
   selected = null;
   city?.showRoute(null);
   city?.pullBack();
+  if (phone.matches) document.querySelector('.panel').scrollIntoView({ block: 'start' });
 };
 
 const search = $('search');
@@ -729,6 +733,18 @@ function bearing(spot) {
   return ['north', 'north-east', 'east', 'south-east',
           'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
 }
+
+// On a phone the detail belongs BELOW the map, not floating over it: an
+// overlay hides the very place you just tapped. The panel is the right parent
+// there, the stage is the right parent on desktop, and CSS cannot reparent, so
+// the node moves. Six lines, and it re-runs if the phone is rotated.
+const phone = matchMedia('(max-width:900px)');
+const placeSheet = () => {
+  const host = phone.matches ? document.querySelector('.panel') : document.querySelector('.stage');
+  if (el.sheet.parentNode !== host) host.prepend(el.sheet);
+};
+placeSheet();
+phone.addEventListener('change', placeSheet);
 
 el.dNav.onclick = () => selected && walkTo(selected);
 
