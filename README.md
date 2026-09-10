@@ -21,7 +21,7 @@ enter an outbox and replay on reconnect instead of failing. Nothing is lost.
 crew code are keys, not an account. No password, no email, no server session.
 
 **"Right now" while offline** cannot mean live data, so we never fake freshness.
-Distance and opening hours compute on-device and stay exact. Two of the 34 places
+Distance and opening hours compute on-device and stay exact. Three of the 36 places
 publish no hours, and the app says "hours unknown" rather than inventing any.
 
 **Realtime transport** is a public MQTT relay, so it is not private and keeps no
@@ -34,14 +34,22 @@ No build step and no external requests at runtime. Three.js, the MQTT client,
 the fonts and the map data are all vendored into the repo, which is why offline
 works at all.
 
-`data/jbr.json` is 44 KB holding 341 real building footprints with real heights
-and 34 real places with real opening hours, baked from OpenStreetMap by
-`tools/bake.mjs`. Re-run it to reproduce the file. The 341 footprints are merged
-into a single geometry so the skyline costs one draw call.
+`data/jbr.json` is 217 KB of OpenStreetMap, baked by `tools/bake.mjs`: 634
+building footprints at their real heights, 36 real places with real opening
+hours, the coastline, the beaches, the parks, the main roads, and Ain Dubai at
+its tagged 210 m. Re-run the script to reproduce it.
+
+Two things in there are worth knowing. All 634 footprints are merged into one
+geometry, so the skyline costs a single draw call. And land versus sea is a
+baked bitmask: for every 10 m cell, which side of the *nearest* coastline
+segment it falls on. Sweeping each segment outward instead does not work, since
+the coastline arrives as 3,893 fragments facing every direction and the union
+covers the whole scene whichever way you point it.
 
 ```
 node tools/bake.mjs        # rebuild data/jbr.json from OpenStreetMap
 node tools/test-hours.mjs  # 23 assertions over the real opening_hours strings
+node tools/test-geo.mjs    # land/sea classification and the demo origin
 npx serve .                # any static server; a service worker needs http(s)
 ```
 

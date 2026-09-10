@@ -369,6 +369,12 @@ function locate() {
 async function boot() {
   identity();
   DATA = await (await fetch('data/jbr.json')).json();
+  // Demo origin: the MEDIAN position of the eating and drinking places, which
+  // lands you on The Walk among them. A mean would be dragged west by Ain Dubai
+  // and Bluewaters and drop you in the channel, in open water.
+  const mid = a => a.sort((x, y) => x - y)[a.length >> 1];
+  const strip = DATA.spots.filter(s => ['food', 'cafe', 'bar'].includes(s.kind));
+  you = { x: mid(strip.map(s => s.x)), z: mid(strip.map(s => s.z)), real: false };
   $('areaLabel').textContent = DATA.label;
   $('attrib').textContent = DATA.attribution;
 
@@ -387,7 +393,8 @@ async function boot() {
         render();
       }
     };
-    city.setYou(0, 0);
+    city.setYou(you.x, you.z);
+    city.target.set(you.x, 0, you.z);
     const loop = () => { city.frame(); requestAnimationFrame(loop); };
     loop();
   } catch (err) {

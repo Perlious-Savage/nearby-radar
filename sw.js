@@ -1,6 +1,6 @@
 // Precache everything. The app has no network data source at all, so "works
 // with no signal" reduces to: serve the whole bundle from cache, always.
-const CACHE = 'nearby-v3';
+const CACHE = 'nearby-v11';
 const SHELL = [
   './', './index.html', './css/app.css',
   './js/app.js', './js/city.js', './js/hours.js',
