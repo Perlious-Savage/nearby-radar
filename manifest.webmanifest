@@ -1,0 +1,9 @@
+{
+  "name": "Nearby Radar",
+  "short_name": "Radar",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0a0b0a",
+  "theme_color": "#0a0b0a",
+  "description": "Things worth doing around you, right now — works at zero bars."
+}
