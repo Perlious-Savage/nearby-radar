@@ -284,13 +284,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   body{overflow:auto;-webkit-text-size-adjust:100%}
   .shell{grid-template-columns:1fr;height:auto}
 
-  /* The map used to be sticky at z-index 1 while the filter bar inside the list
-     was sticky at z-index 2, so the list painted straight through the map and
-     card titles landed on top of the skyline. On a phone the map is a normal
-     block that scrolls away with everything else: one flow, no stacking to get
-     wrong. svh, not vh, so the address bar does not eat the bottom. */
-  .stage{position:relative;z-index:0;height:50svh;min-height:280px}
-  .panel{border-left:0;border-top:1px solid var(--hair);padding:14px 14px 48px;position:relative;z-index:1}
+  /* The map stays put and the list scrolls under it. The earlier breakage was
+     not stickiness itself, it was the order: the map sat at z-index 1 while the
+     filter bar inside the list was sticky at z-index 2, so the list painted
+     through the map. Now the map is above the list and nothing inside the list
+     is sticky, so there is no second sticky element to fight it. */
+  .stage{position:sticky;top:0;z-index:2;height:48svh;min-height:270px}
+  .panel{border-left:0;border-top:1px solid var(--hair);padding:14px 14px 64px;position:relative;z-index:1}
   .filters{position:static}
 
   .topbar{top:10px;left:10px;right:10px;gap:7px}
@@ -312,13 +312,24 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   .readout dd{font-size:17px;margin-top:3px}
   .readout .origin{display:none}
 
-  /* Detail becomes a bottom sheet, thumb-reachable and full width. */
-  .sheet{left:0;right:0;bottom:0;width:auto;border-radius:18px 18px 0 0;padding:5px 5px 0;
-    max-height:76svh;overflow-y:auto;-webkit-overflow-scrolling:touch}
-  .sheet>.in{border-radius:14px 14px 0 0;padding:14px 15px calc(15px + env(safe-area-inset-bottom))}
-  .sheet h2{font-size:17px}
-  .sheet .acts{flex-wrap:wrap}
-  .sheet .acts button{flex:1 1 auto;min-height:42px}
+  /* Bottom sheet. Capped well under the map's height: at 76svh it filled the
+     whole stage and hid the very place you had just tapped, which is the one
+     thing the sheet exists to point at. Two thirds of the map, no more. */
+  .sheet{left:0;right:0;bottom:0;width:auto;border-radius:16px 16px 0 0;padding:4px 4px 0;
+    max-height:min(32svh,64%);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .sheet>.in{border-radius:13px 13px 0 0;padding:12px 13px calc(12px + env(safe-area-inset-bottom))}
+  .sheet h2{font-size:16px;padding-right:26px}
+  .sheet .sub{gap:9px;margin-top:6px}
+  .sheet .note{font-size:12.5px;margin-top:7px}
+  .sheet .route{margin-top:8px;padding:7px 9px;font-size:10.5px}
+  .sheet .acts{flex-wrap:wrap;gap:6px;margin-top:10px}
+  .sheet .acts button{flex:1 1 0;min-width:0;min-height:38px;padding:8px 6px;font-size:11px}
+  .sheet .acts button.primary{padding-right:4px}
+  /* the cover is already on the card you tapped; in the sheet it is a strip */
+  .sheet .cover{height:64px;margin-bottom:7px}
+  .sheet .shots img{width:64px;height:48px}
+  .sheet .noshots{font-size:10.5px;margin-top:6px}
+  .sheet .x{top:11px;right:12px}
 
   .searchbox{font-size:16px}              /* 16px stops iOS zooming on focus */
   .card{margin-bottom:10px}
@@ -328,10 +339,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   .feed li{padding:10px 12px}
   .addform{width:calc(100% - 24px)}
   .addform input{font-size:16px}
-  .hint{top:auto;bottom:calc(50svh + 12px);font-size:11px;padding:7px 13px}
+  .hint{top:auto;bottom:calc(48svh + 10px);font-size:11px;padding:7px 13px}
 }
 
 @media (max-width:420px){
+  .stage{height:44svh}
+  .hint{bottom:calc(44svh + 10px)}
+  .sheet{max-height:min(30svh,62%)}
   .topbar .row{gap:5px}
   .tag{font-size:9.5px;padding:5px 7px}
   .readout dd{font-size:15px}
