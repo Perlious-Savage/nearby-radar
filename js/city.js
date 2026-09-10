@@ -352,20 +352,23 @@ export class City {
   }
 
   buildMarkers() {
+    // Spare slots so places people add live can appear without rebuilding any
+    // geometry. `count` below decides how many actually draw.
+    const CAP = this.spots.length + 128;
+    this.cap = CAP;
+
     const geo = new THREE.CylinderGeometry(4.5, 4.5, 1, 8, 1, true);
     geo.translate(0, 0.5, 0);   // pivot at the base so scale.y grows upward
     this.markers = new THREE.InstancedMesh(
-      geo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95 }), this.spots.length
+      geo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95 }), CAP
     );
-    this.markers.instanceColor =
-      new THREE.InstancedBufferAttribute(new Float32Array(this.spots.length * 3), 3);
+    this.markers.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 3), 3);
     this.scene.add(this.markers);
 
     this.caps = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(11, 14, 10), new THREE.MeshBasicMaterial({}), this.spots.length
+      new THREE.SphereGeometry(11, 14, 10), new THREE.MeshBasicMaterial({}), CAP
     );
-    this.caps.instanceColor =
-      new THREE.InstancedBufferAttribute(new Float32Array(this.spots.length * 3), 3);
+    this.caps.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 3), 3);
     this.scene.add(this.caps);
 
     this.pulse = new Map();   // spot id -> seconds of pulse remaining
@@ -386,7 +389,8 @@ export class City {
   updateMarkers(heat, savedSet) {
     const m = new THREE.Matrix4();
     const c = new THREE.Color();
-    const KIND = { food: 0xff7a3d, cafe: 0x2ea8ff, bar: 0xb45cff, event: 0x00d68f, shop: 0xffc53d };
+    const KIND = { food: 0xff7a3d, cafe: 0x2ea8ff, bar: 0xb45cff, event: 0x00d68f,
+                   shop: 0xffc53d, live: 0xff3d6e };
 
     this.spots.forEach((s, i) => {
       const pins = heat[s.id] || 0;
@@ -404,10 +408,48 @@ export class City {
       this.caps.setColorAt(i, c.clone().multiplyScalar(boost * 1.15));
     });
 
+    this.markers.count = Math.min(this.spots.length, this.cap);
+    this.caps.count = this.markers.count;
     this.markers.instanceMatrix.needsUpdate = true;
     this.caps.instanceMatrix.needsUpdate = true;
     if (this.markers.instanceColor) this.markers.instanceColor.needsUpdate = true;
     if (this.caps.instanceColor) this.caps.instanceColor.needsUpdate = true;
+  }
+
+  setSpots(list) { this.spots = list; }
+
+  // Draw a walking route as a ribbon just above the ground. Dashed when it is
+  // only a straight line, so a guess never looks like real directions.
+  showRoute(points, straight = false) {
+    if (this.routeMesh) {
+      this.scene.remove(this.routeMesh);
+      this.routeMesh.geometry.dispose();
+      this.routeMesh = null;
+    }
+    if (!points || points.length < 2) return;
+
+    const W = 8;   // metres; thinner than this and the line vanishes at range
+    const pos = [];
+    for (let i = 0; i + 1 < points.length; i++) {
+      const [ax, az] = points[i], [bx, bz] = points[i + 1];
+      const dx = bx - ax, dz = bz - az;
+      const len = Math.hypot(dx, dz);
+      if (!len) continue;
+      const nx = (dz / len) * W, nz = (-dx / len) * W;
+      pos.push(ax + nx, 3, az + nz, bx + nx, 3, bz + nz, bx - nx, 3, bz - nz);
+      pos.push(ax + nx, 3, az + nz, bx - nx, 3, bz - nz, ax - nx, 3, az - nz);
+    }
+    if (!pos.length) return;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    this.routeMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: straight ? 0xffb257 : 0x00d68f,
+      transparent: true, opacity: straight ? 0.55 : 0.9,
+      side: THREE.DoubleSide, depthTest: false,
+    }));
+    this.routeMesh.renderOrder = 2;
+    this.scene.add(this.routeMesh);
   }
 
   ping(spotId) { this.pulse.set(spotId, 1.8); }
@@ -417,15 +459,34 @@ export class City {
     this.rings.position.set(x, 0, z);
   }
 
+  // A fixed camera angle puts a tower between you and the place you just tapped
+  // roughly a third of the time here, which reads as the app being broken.
+  // Instead, cast from the target out to where the camera would sit and climb
+  // the pitch until the line of sight is clear. Rising is the right escape:
+  // orbiting round can take several tries and looks indecisive.
+  clearPitch(target, orbit, dist, from = 0.22) {
+    const probe = new THREE.Raycaster();
+    probe.far = dist;
+    const dir = new THREE.Vector3();
+    for (let p = from; p <= 1.05; p += 0.06) {
+      const cp = Math.cos(p);
+      dir.set(Math.sin(orbit) * cp, Math.sin(p), Math.cos(orbit) * cp).normalize();
+      probe.set(target, dir);
+      if (!probe.intersectObject(this.cityMesh, false).length) return p;
+    }
+    return 1.05;   // straight down beats staring at a wall
+  }
+
   flyTo(spot) {
     this.drift = false;
+    const orbit = this.orbit + 0.8;
+    const dist = 430;
+    // Aim a little above street level so the ray clears kerbs and podiums.
+    const target = new THREE.Vector3(spot.x, 45, spot.z);
     this.tween = {
       t: 0, dur: 1.3,
       from: { target: this.target.clone(), orbit: this.orbit, pitch: this.pitch, dist: this.dist },
-      to: {
-        target: new THREE.Vector3(spot.x, 55, spot.z),
-        orbit: this.orbit + 0.8, pitch: 0.24, dist: 430,
-      },
+      to: { target, orbit, pitch: this.clearPitch(target, orbit, dist), dist },
     };
   }
 

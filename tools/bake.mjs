@@ -97,8 +97,13 @@ async function overpass(name, query) {
   await mkdir(CACHE, { recursive: true });
   const file = join(CACHE, name + '.json');
   if (existsSync(file)) {
-    console.log(`  ${name}: cache hit`);
-    return JSON.parse(await readFile(file, 'utf8'));
+    try {
+      const hit = JSON.parse(await readFile(file, 'utf8'));
+      console.log(`  ${name}: cache hit`);
+      return hit;
+    } catch {
+      console.log(`  ${name}: cached body is not JSON, refetching`);
+    }
   }
   // Shelling out to curl rather than using fetch. Overpass answers 406 to the
   // Content-Type that Node's fetch sends and the alternatives were flaky here,
@@ -119,9 +124,17 @@ async function overpass(name, query) {
 
     if (status === '200') {
       const text = await readFile(file, 'utf8');
-      console.log(`  ${name}: ${(text.length / 1024).toFixed(0)} KB from ${host}`);
-      return JSON.parse(text);
-    }
+      // A saturated mirror will hand back an XML error page under HTTP 200.
+      // Parse before trusting it, or the bad body gets cached and every later
+      // run fails on a file that looks like a successful fetch.
+      try {
+        const parsed = JSON.parse(text);
+        console.log(`  ${name}: ${(text.length / 1024).toFixed(0)} KB from ${host}`);
+        return parsed;
+      } catch {
+        console.log(`  ${name}: ${host} returned ${text.trim().slice(0, 40)}..., not JSON`);
+      }
+    } else
     // 429 is rate limiting, 504 a server-side timeout, 000/curl28 a stall. All
     // mean "try another mirror" rather than "the query is wrong".
     if (!['429', '504', '000', 'curl28'].includes(status)) {
@@ -265,6 +278,38 @@ for (const el of rawPois.elements) {
   });
 }
 
+// ---- walkable network -----------------------------------------------------
+// Routing needs footways and side streets, not just the main roads we draw.
+// Nodes are shared by coordinate, so ways that touch actually connect.
+const rawWalk = await overpass('jbr2-walk', `[out:json][timeout:240];
+(way["highway"~"^(footway|pedestrian|path|steps|living_street|residential|service|unclassified|tertiary|secondary|primary|cycleway)$"](${bb}););
+out geom;`);
+
+const nodeIds = new Map();
+const nodes = [];
+const edges = [];
+const nodeAt = (x, y) => {
+  // 4 m snap. OSM ways that meet at a junction do share a node id, but geometry
+  // output does not carry ids, so snapping is how the graph becomes connected.
+  const k = `${Math.round(x / 4)},${Math.round(y / 4)}`;
+  if (nodeIds.has(k)) return nodeIds.get(k);
+  const i = nodes.length / 2;
+  nodes.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+  nodeIds.set(k, i);
+  return i;
+};
+for (const el of rawWalk.elements) {
+  const g = el.geometry;
+  if (!g || g.length < 2) continue;
+  let prev = null;
+  for (const p of g) {
+    const [x, z] = proj.to(p.lat, p.lon);
+    const id = nodeAt(x, z);
+    if (prev !== null && prev !== id) edges.push(prev, id);
+    prev = id;
+  }
+}
+
 // ---- land / sea mask ------------------------------------------------------
 // Classifying sea by sweeping each coastline segment outward does not work
 // here: the coastline arrives as ~3900 fragments facing every direction, and
@@ -374,6 +419,7 @@ const out = {
   attribution: 'Buildings, coastline, roads and places © OpenStreetMap contributors, ODbL.',
   baked: new Date().toISOString().slice(0, 10),
   buildings, spots, water, beach, parks, roads, coast, wheel, seaMask,
+  walk: { nodes, edges },
 };
 
 await mkdir(join(ROOT, 'data'), { recursive: true });
@@ -387,5 +433,6 @@ console.log(`  coastline   ${coast.length} ways`);
 console.log(`  water       ${water.length}   beach ${beach.length}   parks ${parks.length}`);
 console.log(`  roads       ${roads.length}`);
 console.log(`  wheel       ${wheel ? `${wheel.name}, ${wheel.height} m` : 'NOT FOUND'}`);
+console.log(`  walk graph  ${nodes.length / 2} nodes, ${edges.length / 2} edges`);
 console.log(`  unmatched   ${Object.keys(NOTES).length - seen.size} notes had no OSM match`);
 console.log(`  wrote       data/${AREA.id}.json, ${(json.length / 1024).toFixed(0)} KB`);

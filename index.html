@@ -35,9 +35,24 @@
           </span>
           <button class="tag" id="who" title="Change your handle">guest</button>
           <button class="tag crew" id="crew" title="Change your crew code">----</button>
+          <button class="tag add" id="addBtn" title="Drop a place on the map">+ Add a place</button>
         </div>
       </div>
     </header>
+
+    <p class="hint" id="hint" hidden>Click the map where it is happening</p>
+
+    <div class="addform bezel" id="addForm" hidden>
+      <div class="in">
+        <h2>What is here?</h2>
+        <input id="afName" placeholder="Name it" maxlength="48" autocomplete="off">
+        <input id="afNote" placeholder="One line. Why is it worth the walk?" maxlength="140" autocomplete="off">
+        <div class="acts">
+          <button id="afCancel">Cancel</button>
+          <button id="afSave" class="primary">Drop it here<i class="chev">&rarr;</i></button>
+        </div>
+      </div>
+    </div>
 
     <div class="readout bezel">
       <dl class="in">
@@ -55,9 +70,11 @@
         <h2 id="dName"></h2>
         <p class="sub"><span id="dMeta"></span><span id="dDist"></span><span id="dClose"></span></p>
         <p class="note" id="dNote"></p>
+        <p class="route" id="dRoute" hidden></p>
         <div class="acts">
           <button id="dSave">Save</button>
-          <button id="dPin" class="primary">Pin for crew<i class="chev">&rarr;</i></button>
+          <button id="dNav">Walk here</button>
+          <button id="dPin" class="primary">Pin<i class="chev">&rarr;</i></button>
         </div>
       </div>
     </div>

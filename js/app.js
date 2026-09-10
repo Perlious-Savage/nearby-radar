@@ -22,10 +22,12 @@ const $ = id => document.getElementById(id);
 const el = {};
 for (const id of ['net', 'netName', 'who', 'crew', 'canvas', 'cards', 'feed', 'stale',
   'rNear', 'rOpen', 'rSaved', 'rQueue', 'shell', 'fallback', 'detail', 'dName',
-  'dMeta', 'dNote', 'dDist', 'dClose', 'dSave', 'dPin', 'sheet']) el[id] = $(id);
+  'dMeta', 'dNote', 'dDist', 'dClose', 'dSave', 'dPin', 'sheet',
+  'addBtn', 'addForm', 'afName', 'afNote', 'afCancel', 'afSave', 'hint',
+  'dNav', 'dRoute']) el[id] = $(id);
 
 // ---------------------------------------------------------------- state
-const blank = { handle: '', crew: '', saved: {}, heat: {}, outbox: [], seen: [] };
+const blank = { handle: '', crew: '', saved: {}, heat: {}, outbox: [], seen: [], added: {} };
 let S;
 try { S = { ...blank, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; }
 catch { S = { ...blank }; }
@@ -39,8 +41,12 @@ const save = () => {
 };
 
 let DATA, city, you = { x: 0, z: 0, real: false };
+// The baked catalogue plus anything anyone has dropped on the map since.
+const allSpots = () => DATA ? [...DATA.spots, ...Object.values(S.added)] : [];
 let filter = 'all';
 let selected = null;
+let placing = false;
+let pendingAt = null;   // where the new place will land, set by clicking the map
 let feedItems = [];
 
 // ---------------------------------------------------------------- identity
@@ -79,8 +85,9 @@ const transport = {
   client: null,
   bc: null,
   onPin: () => {},
+  onSpot: () => {},
 
-  topic() { return `nearby/crew/${S.crew}`; },
+  base() { return `nearby/crew/${S.crew}`; },
 
   start() {
     this.bc = 'BroadcastChannel' in self ? new BroadcastChannel('nearby.crew') : null;
@@ -107,7 +114,7 @@ const transport = {
     c.on('connect', () => {
       settled = true;
       this.client = c;
-      c.subscribe(this.topic());
+      c.subscribe(`${this.base()}/#`);
       this.setMode('live', BROKERS[i].split('//')[1].split(':')[0]);
       drain();
     });
@@ -139,8 +146,14 @@ const transport = {
   up() { return this.mode === 'live' && navigator.onLine; },
 
   send(msg) {
+    // A pin is a moment and is not retained. A place someone added is a fact
+    // about the map, so it goes to its own topic with the retain flag: the
+    // broker holds the last message per topic and hands the whole set to
+    // whoever subscribes next. That is what gives late joiners any history at
+    // all, since the relay stores nothing else.
+    const topic = msg.t === 'spot' ? `${this.base()}/spot/${msg.spot.id}` : `${this.base()}/pin`;
     if (this.client && navigator.onLine) {
-      this.client.publish(this.topic(), JSON.stringify(msg));
+      this.client.publish(topic, JSON.stringify(msg), { retain: msg.t === 'spot', qos: 0 });
       this.bc?.postMessage(msg);
       return true;
     }
@@ -152,7 +165,7 @@ const transport = {
     if (!msg?.id || msg.from === S.handle) return;
     if (S.seen.includes(msg.id)) return;          // replays are idempotent
     S.seen.push(msg.id);
-    this.onPin(msg, via);
+    if (msg.t === 'spot') this.onSpot(msg, via); else this.onPin(msg, via);
   },
 };
 
@@ -200,8 +213,43 @@ function toggleSave(spot) {
   render();
 }
 
+// Anyone can drop a place anywhere. This is the half of "friends find
+// something cool" that a fixed catalogue cannot express: a pop-up, a busker, a
+// queue worth joining, none of which are in OpenStreetMap.
+function addSpot(name, note, x, z) {
+  const spot = {
+    id: 'live-' + rand(6).toLowerCase(),
+    name: name.slice(0, 48),
+    kind: 'live',
+    note: (note || 'Added live.').slice(0, 140),
+    x, z, hours: null,
+    by: S.handle,
+    at: Date.now(),
+  };
+  S.added[spot.id] = spot;
+  save();
+  city?.setSpots(allSpots());
+  const how = enqueue({ t: 'spot', id: rand(10), from: S.handle, spot, at: spot.at });
+  log('you', how === 'queued' ? `queued "${spot.name}" for the crew` : `added "${spot.name}"`,
+      how === 'queued');
+  city?.ping(spot.id);
+  render();
+  return spot;
+}
+
+transport.onSpot = (msg) => {
+  const spot = msg.spot;
+  if (!spot?.id || S.added[spot.id]) return;
+  S.added[spot.id] = spot;
+  save();
+  city?.setSpots(allSpots());
+  city?.ping(spot.id);
+  log(msg.from, `added "${spot.name}"`);
+  render();
+};
+
 transport.onPin = (msg) => {
-  const spot = DATA.spots.find(s => s.id === msg.spot);
+  const spot = allSpots().find(s => s.id === msg.spot);
   if (!spot) return;
   S.heat[spot.id] = (S.heat[spot.id] || 0) + 1;
   save();
@@ -250,7 +298,7 @@ function score(s) {
 }
 
 function visible() {
-  return DATA.spots
+  return allSpots()
     .filter(s => {
       if (filter === 'all') return true;
       if (filter === 'open') return openState(s.hours)?.open === true;
@@ -290,8 +338,8 @@ function card(s) {
 }
 
 function renderReadout() {
-  const near = DATA.spots.filter(s => dist(s) < 1000).length;
-  const open = DATA.spots.filter(s => openState(s.hours)?.open).length;
+  const near = allSpots().filter(s => dist(s) < 1000).length;
+  const open = allSpots().filter(s => openState(s.hours)?.open).length;
   el.rNear.textContent = near;
   el.rOpen.textContent = open;
   el.rSaved.textContent = Object.keys(S.saved).length;
@@ -318,6 +366,9 @@ function renderDetail(s) {
   el.dDist.textContent = fmtDist(dist(s));
   el.dClose.textContent = st === null ? 'hours unknown' : st.open
     ? (st.closesIn < 90 ? `closes in ${st.closesIn} min` : 'open now') : 'closed now';
+  el.dRoute.hidden = true;
+  city?.showRoute(null);
+  el.dMeta.textContent = s.kind === 'live' ? `added by ${s.by || 'the crew'}` : s.kind;
   el.dSave.textContent = S.saved[s.id] ? 'Saved' : 'Save';
   el.dSave.classList.toggle('on', !!S.saved[s.id]);
   el.sheet.hidden = false;
@@ -327,7 +378,7 @@ function renderDetail(s) {
 el.cards.addEventListener('click', e => {
   const art = e.target.closest('[data-spot]');
   if (!art) return;
-  const spot = DATA.spots.find(s => s.id === art.dataset.spot);
+  const spot = allSpots().find(s => s.id === art.dataset.spot);
   const act = e.target.closest('button')?.dataset.act;
   if (act === 'save') return toggleSave(spot);
   if (act === 'pin') return pin(spot);
@@ -338,13 +389,175 @@ el.cards.addEventListener('click', e => {
 
 el.dSave.onclick = () => selected && toggleSave(selected);
 el.dPin.onclick = () => selected && pin(selected);
-$('dClose2').onclick = () => { el.sheet.hidden = true; selected = null; city?.pullBack(); };
+$('dClose2').onclick = () => {
+  el.sheet.hidden = true;
+  el.dRoute.hidden = true;
+  selected = null;
+  city?.showRoute(null);
+  city?.pullBack();
+};
 
 document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => {
   filter = b.dataset.filter;
   document.querySelectorAll('[data-filter]').forEach(o => o.setAttribute('aria-pressed', String(o === b)));
   render();
 });
+
+// ---------------------------------------------------------------- add a place
+function setPlacing(on) {
+  placing = on;
+  el.addBtn.setAttribute('aria-pressed', String(on));
+  el.addBtn.textContent = on ? 'Cancel' : '+ Add a place';
+  el.hint.hidden = !on;
+  if (!on) { el.addForm.hidden = true; pendingAt = null; }
+}
+
+el.addBtn.onclick = () => setPlacing(!placing);
+
+el.afCancel.onclick = () => setPlacing(false);
+
+el.afSave.onclick = () => {
+  const name = el.afName.value.trim();
+  if (!name || !pendingAt) { el.afName.focus(); return; }
+  const spot = addSpot(name, el.afNote.value.trim(), pendingAt.x, pendingAt.z);
+  el.afName.value = el.afNote.value = '';
+  setPlacing(false);
+  selected = spot;
+  city?.flyTo(spot);
+  renderDetail(spot);
+};
+
+// Enter saves, Escape backs out. Cheaper than a keyboard-handling library and
+// it is what anyone will try first.
+el.addForm.addEventListener('keydown', e => {
+  if (e.key === 'Enter') el.afSave.click();
+  if (e.key === 'Escape') setPlacing(false);
+});
+
+// ---------------------------------------------------------------- walking route
+// A* over the baked footway graph. Straight-line distance is the heuristic,
+// which is admissible on a metric graph, so the first path found is shortest.
+let adjacency = null;
+
+function graph() {
+  if (adjacency) return adjacency;
+  const w = DATA.walk;
+  if (!w || !w.edges.length) return (adjacency = { adj: [], nodes: [] });
+  const adj = Array.from({ length: w.nodes.length / 2 }, () => []);
+  for (let i = 0; i < w.edges.length; i += 2) {
+    const a = w.edges[i], b = w.edges[i + 1];
+    const cost = Math.hypot(w.nodes[a * 2] - w.nodes[b * 2], w.nodes[a * 2 + 1] - w.nodes[b * 2 + 1]);
+    adj[a].push([b, cost]);
+    adj[b].push([a, cost]);
+  }
+  return (adjacency = { adj, nodes: w.nodes });
+}
+
+const nearestNode = (nodes, x, z) => {
+  let best = Infinity, at = -1;
+  for (let i = 0; i < nodes.length; i += 2) {
+    const d = (nodes[i] - x) ** 2 + (nodes[i + 1] - z) ** 2;
+    if (d < best) { best = d; at = i / 2; }
+  }
+  return at;
+};
+
+function route(from, to) {
+  const { adj, nodes } = graph();
+  if (!adj.length) return null;
+  const start = nearestNode(nodes, from.x, from.z);
+  const goal = nearestNode(nodes, to.x, to.z);
+  if (start < 0 || goal < 0 || start === goal) return null;
+
+  const h = i => Math.hypot(nodes[i * 2] - nodes[goal * 2], nodes[i * 2 + 1] - nodes[goal * 2 + 1]);
+  const g = new Float64Array(adj.length).fill(Infinity);
+  const came = new Int32Array(adj.length).fill(-1);
+  const done = new Uint8Array(adj.length);
+  g[start] = 0;
+
+  // Binary min-heap keyed on f. Scanning the open set linearly instead cost
+  // about a second on a 1.7 km route, which is a visible freeze, because the
+  // walkable graph has ~16k nodes rather than the few hundred a single street
+  // would suggest. Stale entries are left in and skipped on pop.
+  const heap = [[h(start), start]];
+  const push = e => {
+    heap.push(e);
+    for (let i = heap.length - 1; i > 0;) {
+      const p = (i - 1) >> 1;
+      if (heap[p][0] <= heap[i][0]) break;
+      [heap[p], heap[i]] = [heap[i], heap[p]];
+      i = p;
+    }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      for (let i = 0;;) {
+        const l = i * 2 + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]];
+        i = m;
+      }
+    }
+    return top;
+  };
+
+  let guard = 200000;
+  while (heap.length && guard-- > 0) {
+    const cur = pop()[1];
+    if (cur === goal) break;
+    if (done[cur]) continue;                 // stale heap entry
+    done[cur] = 1;
+    for (const [nb, cost] of adj[cur]) {
+      if (done[nb]) continue;
+      const tentative = g[cur] + cost;
+      if (tentative < g[nb]) {
+        g[nb] = tentative;
+        came[nb] = cur;
+        push([tentative + h(nb), nb]);
+      }
+    }
+  }
+  if (g[goal] === Infinity || guard <= 0) return null;
+
+  const path = [];
+  for (let i = goal; i !== -1; i = came[i]) path.push([nodes[i * 2], nodes[i * 2 + 1]]);
+  path.reverse();
+  return { path, metres: g[goal] };
+}
+
+function walkTo(spot) {
+  const r = route(you, spot);
+  const crow = dist(spot);
+  if (!r) {
+    // No path in the graph. Say so and give the honest fallback rather than
+    // drawing a line through buildings and calling it directions.
+    city?.showRoute([[you.x, you.z], [spot.x, spot.z]], true);
+    el.dRoute.hidden = false;
+    el.dRoute.textContent =
+      `No mapped footpath. ${fmtDist(crow)} in a straight line, heading ${bearing(spot)}.`;
+    return;
+  }
+  const full = [[you.x, you.z], ...r.path, [spot.x, spot.z]];
+  city?.showRoute(full, false);
+  const mins = Math.max(1, Math.round(r.metres / 80));   // ~4.8 km/h
+  el.dRoute.hidden = false;
+  el.dRoute.textContent =
+    `${fmtDist(r.metres)} on foot, about ${mins} min, heading ${bearing(spot)}.`;
+}
+
+// Compass bearing from you to the spot. x is east and z is south.
+function bearing(spot) {
+  const deg = (Math.atan2(spot.x - you.x, -(spot.z - you.z)) * 180 / Math.PI + 360) % 360;
+  return ['north', 'north-east', 'east', 'south-east',
+          'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
+}
+
+el.dNav.onclick = () => selected && walkTo(selected);
 
 // ---------------------------------------------------------------- position
 function locate() {
@@ -386,13 +599,20 @@ async function boot() {
         selected = spot;
         city.flyTo(spot);
         renderDetail(spot);
+      } else if (ground && placing) {
+        pendingAt = { x: ground.x, z: ground.z };
+        el.hint.hidden = true;
+        el.addForm.hidden = false;
+        el.afName.focus();
       } else if (ground) {
         you = { x: ground.x, z: ground.z, real: false };
         city.setYou(you.x, you.z);
+        city.showRoute(null);
         $('origin').textContent = 'a spot you picked';
         render();
       }
     };
+    city.setSpots(allSpots());
     city.setYou(you.x, you.z);
     city.target.set(you.x, 0, you.z);
     const loop = () => { city.frame(); requestAnimationFrame(loop); };

@@ -78,3 +78,34 @@ console.log(`demo origin ${origin.map(v => v.toFixed(0)).join(', ')}, ` +
             `${nearestPlace.toFixed(0)} m from the nearest place`);
 console.log(`median sits ${spread.toFixed(0)} m from where the mean would put it`);
 console.log('geometry checks passed');
+
+// --- walking graph ---------------------------------------------------------
+// Routing is worthless if the graph is a pile of disconnected fragments, which
+// is what happens when ways that meet at a junction fail to share a node.
+const w = d.walk;
+assert.ok(w && w.nodes.length > 4000, 'expected a real footway graph');
+assert.ok(w.edges.length >= w.nodes.length / 2, 'graph looks too sparse to route on');
+
+const adj = Array.from({ length: w.nodes.length / 2 }, () => []);
+for (let i = 0; i < w.edges.length; i += 2) {
+  adj[w.edges[i]].push(w.edges[i + 1]);
+  adj[w.edges[i + 1]].push(w.edges[i]);
+}
+// Largest connected component, by flood fill from the busiest node.
+const seen = new Uint8Array(adj.length);
+let biggest = 0;
+for (let s = 0; s < adj.length; s++) {
+  if (seen[s]) continue;
+  let n = 0;
+  const stack = [s];
+  seen[s] = 1;
+  while (stack.length) {
+    const c = stack.pop();
+    n++;
+    for (const nb of adj[c]) if (!seen[nb]) { seen[nb] = 1; stack.push(nb); }
+  }
+  biggest = Math.max(biggest, n);
+}
+const pct = 100 * biggest / adj.length;
+assert.ok(pct > 55, `walk graph too fragmented: largest component only ${pct.toFixed(0)}%`);
+console.log(`walk graph ${adj.length} nodes, largest connected component ${pct.toFixed(0)}%`);

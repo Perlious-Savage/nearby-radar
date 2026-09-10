@@ -12,6 +12,10 @@ on the other device within a second.
 The brief contradicts itself twice. We resolved both with architecture rather
 than by picking a side.
 
+**Anyone can add a place.** A fixed catalogue cannot express a pop-up, a busker
+or a queue worth joining, which is most of what "friends find something cool"
+means. Hit *Add a place*, click the map, name it. It syncs to your crew.
+
 **"Works with no signal" vs "live updates from friends."** Local-first. The
 device store is the source of truth and the whole app, including the map and the
 places, ships inside the bundle. Realtime is an overlay on top. Pins made offline
@@ -24,9 +28,17 @@ crew code are keys, not an account. No password, no email, no server session.
 Distance and opening hours compute on-device and stay exact. Three of the 36 places
 publish no hours, and the app says "hours unknown" rather than inventing any.
 
-**Realtime transport** is a public MQTT relay, so it is not private and keeps no
-history. It degrades to same-browser sync if blocked, and the UI names which one
-is live.
+**Realtime transport** is a public MQTT relay, so it is not private. Pins are
+moments and are not retained. Places people add are facts about the map, so each
+goes to its own topic with the retain flag, which is how someone opening the link
+late still receives every place added before they arrived. If the relay is
+blocked the app degrades to same-browser sync, and the UI names which one is
+live rather than hiding it.
+
+**Walking directions** are A* over a footway graph baked from OpenStreetMap:
+15,868 nodes and 17,099 edges, all offline. Where no mapped path exists the app
+says so and gives a straight-line distance and bearing instead of drawing a line
+through buildings and calling it directions.
 
 ## How it is built
 
@@ -49,7 +61,7 @@ covers the whole scene whichever way you point it.
 ```
 node tools/bake.mjs        # rebuild data/jbr.json from OpenStreetMap
 node tools/test-hours.mjs  # 23 assertions over the real opening_hours strings
-node tools/test-geo.mjs    # land/sea classification and the demo origin
+node tools/test-geo.mjs    # land/sea classification, demo origin, walk graph
 npx serve .                # any static server; a service worker needs http(s)
 ```
 
