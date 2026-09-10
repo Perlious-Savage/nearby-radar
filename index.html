@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Nearby Radar</title>
+<meta name="description" content="Things worth doing around you, right now. Works at zero bars.">
+<meta name="theme-color" content="#0b0d11">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div class="shell" id="shell">
+
+  <section class="stage">
+    <canvas id="canvas"></canvas>
+
+    <div class="fallback" id="fallback" hidden>
+      <p>3D is unavailable on this device, so the map is off. Everything below still works.</p>
+    </div>
+
+    <header class="topbar">
+      <div class="bezel brandwrap">
+        <div class="in">
+          <span class="brand">Nearby</span>
+          <span class="area" id="areaLabel">loading</span>
+        </div>
+      </div>
+
+      <div class="bezel">
+        <div class="in row">
+          <span class="net" id="net" data-mode="connecting">
+            <i></i><span id="netName">connecting</span>
+          </span>
+          <button class="tag" id="who" title="Change your handle">guest</button>
+          <button class="tag crew" id="crew" title="Change your crew code">----</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="readout bezel">
+      <dl class="in">
+        <div><dt>within 1 km</dt><dd id="rNear">0</dd></div>
+        <div><dt>open now</dt><dd id="rOpen">0</dd></div>
+        <div><dt>saved</dt><dd id="rSaved">0</dd></div>
+        <div><dt>queued</dt><dd id="rQueue">0</dd></div>
+      </dl>
+      <p class="origin">Position: <span id="origin">a demo spot on The Walk</span>. Drag to orbit, scroll to zoom, click the ground to move.</p>
+    </div>
+
+    <div class="sheet bezel" id="sheet" hidden>
+      <div class="in">
+        <button class="x" id="dClose2" aria-label="Close">&times;</button>
+        <h2 id="dName"></h2>
+        <p class="sub"><span id="dMeta"></span><span id="dDist"></span><span id="dClose"></span></p>
+        <p class="note" id="dNote"></p>
+        <div class="acts">
+          <button id="dSave">Save</button>
+          <button id="dPin" class="primary">Pin for crew<i class="chev">&rarr;</i></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="filters" role="group" aria-label="Filter places">
+      <button data-filter="all" aria-pressed="true">All</button>
+      <button data-filter="open" aria-pressed="false">Open now</button>
+      <button data-filter="food" aria-pressed="false">Food</button>
+      <button data-filter="cafe" aria-pressed="false">Cafe</button>
+      <button data-filter="bar" aria-pressed="false">Bars</button>
+      <button data-filter="saved" aria-pressed="false">Saved</button>
+    </div>
+
+    <section class="block">
+      <h2>Crew feed</h2>
+      <ul class="feed" id="feed"></ul>
+    </section>
+
+    <p class="stale" id="stale"></p>
+
+    <section class="block">
+      <h2>Around you</h2>
+      <div id="cards"></div>
+    </section>
+
+    <footer>
+      <p id="attrib"></p>
+      <p>No accounts, no server, no tracking. The only thing that leaves this device is a pin you choose to share with your crew.</p>
+    </footer>
+  </aside>
+
+</div>
+
+<script src="vendor/mqtt.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
