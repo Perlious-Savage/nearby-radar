@@ -116,6 +116,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 }
 .acts button.primary:hover .chev{transform:translateX(2px)}
 
+.tag.invite{color:var(--accent);border-color:rgba(110,231,183,.35)}
 .tag.add{color:var(--ink);border-color:rgba(255,255,255,.28)}
 .tag.add[aria-pressed="true"]{background:#ff3d6e;border-color:transparent;color:#fff;font-weight:500}
 

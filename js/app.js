@@ -24,7 +24,7 @@ for (const id of ['net', 'netName', 'who', 'crew', 'canvas', 'cards', 'feed', 's
   'rNear', 'rOpen', 'rSaved', 'rQueue', 'shell', 'fallback', 'detail', 'dName',
   'dMeta', 'dNote', 'dDist', 'dClose', 'dSave', 'dPin', 'sheet',
   'addBtn', 'addForm', 'afName', 'afNote', 'afCancel', 'afSave', 'hint',
-  'dNav', 'dRoute', 'dShots', 'dPhoto', 'photoFile']) el[id] = $(id);
+  'dNav', 'dRoute', 'dShots', 'dPhoto', 'photoFile', 'inviteBtn']) el[id] = $(id);
 
 // ---------------------------------------------------------------- state
 const blank = { handle: '', crew: '', saved: {}, heat: {}, outbox: [], seen: [], added: {} };
@@ -65,6 +65,26 @@ function identity() {
 el.who.onclick = () => {
   const v = prompt('Handle. No password, no email, it just keys your saved list.', S.handle);
   if (v?.trim()) { S.handle = v.trim().slice(0, 16).toLowerCase(); save(); el.who.textContent = S.handle; }
+};
+
+// Everyone who opens the bare link gets their OWN random crew code and so sees
+// nobody. Sharing has to carry the code, which is what this copies. Without it
+// the whole social half of the app silently does nothing for a new visitor.
+const inviteLink = () => `${location.origin}${location.pathname}#crew=${S.crew}`;
+
+el.inviteBtn.onclick = async () => {
+  const link = inviteLink();
+  try {
+    await navigator.clipboard.writeText(link);
+    el.inviteBtn.textContent = 'Link copied';
+  } catch {
+    // Clipboard needs a secure context and permission; fall back to showing it.
+    prompt('Share this link. Anyone who opens it joins crew ' + S.crew, link);
+    el.inviteBtn.textContent = 'Invite';
+    return;
+  }
+  log('you', `invite link copied, crew ${S.crew}`);
+  setTimeout(() => { el.inviteBtn.textContent = 'Invite'; }, 2200);
 };
 
 el.crew.onclick = () => {
