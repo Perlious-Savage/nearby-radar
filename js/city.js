@@ -38,9 +38,9 @@ export class City {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(C.haze, 3200, 13000);
+    this.scene.fog = new THREE.Fog(C.haze, 4200, 20000);
 
-    this.camera = new THREE.PerspectiveCamera(46, 1, 1, 16000);
+    this.camera = new THREE.PerspectiveCamera(46, 1, 1, 90000);
 
     // Orbit state: the camera looks at `target` from `orbit` radians around it
     // at `pitch` and `dist`. Every camera move animates those three numbers.
@@ -71,13 +71,13 @@ export class City {
   // Vertex-coloured dome. Cheaper and sharper than a texture, and it gives the
   // horizon the warm band that sells the hour.
   buildSky() {
-    const geo = new THREE.SphereGeometry(9000, 32, 20);
+    const geo = new THREE.SphereGeometry(40000, 32, 20);
     const top = new THREE.Color(C.sky), low = new THREE.Color(C.horizon);
     const pos = geo.attributes.position;
     const col = new Float32Array(pos.count * 3);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
-      const t = Math.max(0, Math.min(1, (pos.getY(i) / 9000 + 0.08) / 0.55));
+      const t = Math.max(0, Math.min(1, (pos.getY(i) / 40000 + 0.08) / 0.55));
       c.copy(low).lerp(top, Math.pow(t, 0.75));
       col.set([c.r, c.g, c.b], i * 3);
     }
@@ -140,7 +140,7 @@ export class City {
     // in open water, which is the difference between a rough edge and a demo
     // that looks broken.
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(24000, 24000),
+      new THREE.PlaneGeometry(80000, 80000),
       new THREE.MeshStandardMaterial({ color: C.land, roughness: 1, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
@@ -162,6 +162,22 @@ export class City {
         const n = j * mask.w + i;
         return (bits[n >> 3] >> (n & 7)) & 1;
       };
+
+      // Classify any point on the plane, including far outside the baked area.
+      // Clamping the indices means the edge of the mask is repeated outward, so
+      // the coastline simply keeps going in whatever direction it was heading.
+      // That is what lets the far field continue the sea and the sprawl
+      // convincingly instead of stopping at a visible square edge.
+      this.wetAt = (x, z) => sea(
+        Math.max(0, Math.min(mask.w - 1, Math.floor((x - mask.x0) / mask.stepX))),
+        Math.max(0, Math.min(mask.h - 1, Math.floor((z - mask.z0) / mask.stepZ)))
+      );
+      this.bakedBounds = {
+        x0: mask.x0, z0: mask.z0,
+        x1: mask.x0 + mask.w * mask.stepX,
+        z1: mask.z0 + mask.h * mask.stepZ,
+      };
+
       const pos = [];
       for (let j = 0; j < mask.h; j++) {
         let run = -1;
@@ -189,6 +205,8 @@ export class City {
         })));
       }
     }
+
+    this.farField();
 
     this.fill(d.water || [], Y.water + 0.05, C.seaDeep, false);   // marina basins
     this.fill(d.beach || [], Y.beach, C.sand);
@@ -231,6 +249,90 @@ export class City {
       ));
     }
     this.scene.add(this.rings);
+  }
+
+  // Everything past the surveyed neighbourhood, out to the haze: the Gulf keeps
+  // going one way and the city keeps going the other, so the world has no edge.
+  //
+  // This is scenery, not data, and it says so: no markers, no shadows, no
+  // interaction, one merged mesh for the sprawl and one for the water. The
+  // shape of it is not invented though, it follows the real coastline outward
+  // through the clamped mask, so the sea stays on the correct side.
+  farField() {
+    if (!this.wetAt) return;
+    const B = this.bakedBounds;
+    const REACH = 15000, STEP = 190;
+
+    // Deterministic hash. The skyline must be identical on every load and on
+    // every device, or two people demoing side by side see different cities.
+    const hash = (i, j, salt) => {
+      let h = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ Math.imul(salt, 2246822519);
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+
+    const water = [];
+    const town = [];
+    const half = STEP / 2;
+
+    for (let x = -REACH; x <= REACH; x += STEP) {
+      for (let z = -REACH; z <= REACH; z += STEP) {
+        const inside = x > B.x0 - STEP && x < B.x1 + STEP && z > B.z0 - STEP && z < B.z1 + STEP;
+        if (inside) continue;                       // the real thing is drawn there
+
+        const cx = x + half, cz = z + half;
+        if (this.wetAt(cx, cz)) {
+          water.push(x, Y.water, z, x + STEP, Y.water, z, x + STEP, Y.water, z + STEP);
+          water.push(x, Y.water, z, x + STEP, Y.water, z + STEP, x, Y.water, z + STEP);
+          continue;
+        }
+
+        const i = Math.round(x / STEP), j = Math.round(z / STEP);
+        // Density and height both fall off with distance, so the eye reads
+        // depth rather than a uniform field of identical blocks.
+        const far = Math.min(1, Math.hypot(cx, cz) / REACH);
+        if (hash(i, j, 1) > 0.62 - far * 0.28) continue;
+
+        const w = 34 + hash(i, j, 2) * 62;
+        const dp = 34 + hash(i, j, 3) * 62;
+        const h = (10 + Math.pow(hash(i, j, 4), 3) * 210) * (1 - far * 0.55);
+        const ox = (hash(i, j, 5) - 0.5) * (STEP - w);
+        const oz = (hash(i, j, 6) - 0.5) * (STEP - dp);
+        const x0 = cx + ox - w / 2, x1 = cx + ox + w / 2;
+        const z0 = cz + oz - dp / 2, z1 = cz + oz + dp / 2;
+
+        // Four walls and a roof, wound so the outward faces point outward.
+        const box = [
+          [x0, z0, x1, z0], [x1, z0, x1, z1], [x1, z1, x0, z1], [x0, z1, x0, z0],
+        ];
+        for (const [ax, az, bx, bz] of box) {
+          town.push(ax, 0, az, bx, 0, bz, bx, h, bz);
+          town.push(ax, 0, az, bx, h, bz, ax, h, az);
+        }
+        town.push(x0, h, z0, x1, h, z0, x1, h, z1);
+        town.push(x0, h, z0, x1, h, z1, x0, h, z1);
+      }
+    }
+
+    if (water.length) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(water, 3));
+      geo.computeVertexNormals();
+      this.scene.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        color: C.sea, roughness: 0.42, metalness: 0.04, side: THREE.DoubleSide,
+      })));
+    }
+    if (town.length) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(town, 3));
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        color: 0xb9b2a6, roughness: 0.85, metalness: 0.02, side: THREE.DoubleSide,
+      }));
+      mesh.frustumCulled = true;
+      this.scene.add(mesh);
+      this.farBlocks = town.length / 90;
+    }
   }
 
   buildCity() {
@@ -526,7 +628,7 @@ export class City {
     canvas.addEventListener('wheel', e => {
       e.preventDefault();
       this.drift = false;
-      this.dist = Math.max(200, Math.min(4200, this.dist * (1 + Math.sign(e.deltaY) * 0.12)));
+      this.dist = Math.max(200, Math.min(12000, this.dist * (1 + Math.sign(e.deltaY) * 0.12)));
     }, { passive: false });
   }
 

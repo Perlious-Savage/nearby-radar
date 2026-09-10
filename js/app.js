@@ -24,7 +24,7 @@ for (const id of ['net', 'netName', 'who', 'crew', 'canvas', 'cards', 'feed', 's
   'rNear', 'rOpen', 'rSaved', 'rQueue', 'shell', 'fallback', 'detail', 'dName',
   'dMeta', 'dNote', 'dDist', 'dClose', 'dSave', 'dPin', 'sheet',
   'addBtn', 'addForm', 'afName', 'afNote', 'afCancel', 'afSave', 'hint',
-  'dNav', 'dRoute']) el[id] = $(id);
+  'dNav', 'dRoute', 'dShots', 'dPhoto', 'photoFile']) el[id] = $(id);
 
 // ---------------------------------------------------------------- state
 const blank = { handle: '', crew: '', saved: {}, heat: {}, outbox: [], seen: [], added: {} };
@@ -86,6 +86,7 @@ const transport = {
   bc: null,
   onPin: () => {},
   onSpot: () => {},
+  onPhoto: () => {},
 
   base() { return `nearby/crew/${S.crew}`; },
 
@@ -151,9 +152,11 @@ const transport = {
     // broker holds the last message per topic and hands the whole set to
     // whoever subscribes next. That is what gives late joiners any history at
     // all, since the relay stores nothing else.
-    const topic = msg.t === 'spot' ? `${this.base()}/spot/${msg.spot.id}` : `${this.base()}/pin`;
+    const topic = msg.t === 'spot' ? `${this.base()}/spot/${msg.spot.id}`
+                : msg.t === 'photo' ? `${this.base()}/photo/${msg.shot.id}`
+                : `${this.base()}/pin`;
     if (this.client && navigator.onLine) {
-      this.client.publish(topic, JSON.stringify(msg), { retain: msg.t === 'spot', qos: 0 });
+      this.client.publish(topic, JSON.stringify(msg), { retain: msg.t !== 'pin', qos: 0 });
       this.bc?.postMessage(msg);
       return true;
     }
@@ -165,7 +168,9 @@ const transport = {
     if (!msg?.id || msg.from === S.handle) return;
     if (S.seen.includes(msg.id)) return;          // replays are idempotent
     S.seen.push(msg.id);
-    if (msg.t === 'spot') this.onSpot(msg, via); else this.onPin(msg, via);
+    if (msg.t === 'spot') this.onSpot(msg, via);
+    else if (msg.t === 'photo') this.onPhoto(msg, via);
+    else this.onPin(msg, via);
   },
 };
 
@@ -328,6 +333,7 @@ function card(s) {
       </header>
       <p class="meta"><span class="kind k-${s.kind}">${s.kind}</span>${status}</p>
       <p class="note">${esc(s.note)}</p>
+      ${shotsHTML(s.id, 3)}
       ${heat ? `<p class="heat">${heat} crew pin${heat > 1 ? 's' : ''}</p>` : ''}
       <div class="acts">
         <button data-act="save" class="${saved ? 'on' : ''}">${saved ? 'Saved' : 'Save'}</button>
@@ -369,6 +375,8 @@ function renderDetail(s) {
   el.dRoute.hidden = true;
   city?.showRoute(null);
   el.dMeta.textContent = s.kind === 'live' ? `added by ${s.by || 'the crew'}` : s.kind;
+  el.dShots.innerHTML = shotsHTML(s.id) ||
+    '<p class="noshots">No photos yet. Add the first one.</p>';
   el.dSave.textContent = S.saved[s.id] ? 'Saved' : 'Save';
   el.dSave.classList.toggle('on', !!S.saved[s.id]);
   el.sheet.hidden = false;
@@ -402,6 +410,95 @@ document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-filter]').forEach(o => o.setAttribute('aria-pressed', String(o === b)));
   render();
 });
+
+// ---------------------------------------------------------------- photos
+// Photos live in IndexedDB, not localStorage. A handful of images blows past
+// the ~5 MB string quota, and losing someone's photo silently is the worst
+// possible failure for the one feature they contributed themselves.
+const PDB = 'nearby.photos';
+let photos = {};    // spotId -> [{id, spot, url, by, at}]
+
+const openDB = () => new Promise((res, rej) => {
+  const r = indexedDB.open(PDB, 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('shots', { keyPath: 'id' });
+  r.onsuccess = () => res(r.result);
+  r.onerror = () => rej(r.error);
+});
+
+async function savePhoto(p) {
+  try {
+    const d = await openDB();
+    await new Promise((res, rej) => {
+      const t = d.transaction('shots', 'readwrite');
+      t.objectStore('shots').put(p);
+      t.oncomplete = res;
+      t.onerror = () => rej(t.error);
+    });
+  } catch (e) { console.warn('photo store unavailable', e); }
+  (photos[p.spot] ||= []).push(p);
+}
+
+async function loadPhotos() {
+  try {
+    const d = await openDB();
+    const all = await new Promise((res, rej) => {
+      const q = d.transaction('shots').objectStore('shots').getAll();
+      q.onsuccess = () => res(q.result);
+      q.onerror = () => rej(q.error);
+    });
+    photos = {};
+    for (const p of all) (photos[p.spot] ||= []).push(p);
+  } catch (e) { console.warn('photos unreadable', e); }
+}
+
+// Phone photos are 3-8 MB. Downscale before anything else touches them: the
+// relay has a payload ceiling and the outbox has to survive in localStorage.
+function shrink(file, max = 720, quality = 0.62) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      res(c.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => rej(new Error('not an image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function addPhoto(spot, file) {
+  let url;
+  try { url = await shrink(file); }
+  catch { log('you', 'that file was not an image'); return; }
+
+  const shot = { id: 'p-' + rand(8).toLowerCase(), spot: spot.id, url, by: S.handle, at: Date.now() };
+  await savePhoto(shot);
+  const how = enqueue({ t: 'photo', id: rand(10), from: S.handle, shot, at: shot.at });
+  log('you', how === 'queued'
+    ? `queued a photo of ${spot.name}` : `added a photo of ${spot.name}`, how === 'queued');
+  render();
+}
+
+transport.onPhoto = async (msg) => {
+  const shot = msg.shot;
+  if (!shot?.id || (photos[shot.spot] || []).some(p => p.id === shot.id)) return;
+  await savePhoto(shot);
+  const spot = allSpots().find(s => s.id === shot.spot);
+  log(msg.from, `added a photo of ${spot ? spot.name : 'a place'}`);
+  render();
+};
+
+const shotsHTML = (spotId, limit = 6) => {
+  const list = (photos[spotId] || []).slice(-limit).reverse();
+  if (!list.length) return '';
+  return `<div class="shots">${list.map(p =>
+    `<figure><img src="${p.url}" alt="" loading="lazy"><figcaption>${esc(p.by)}</figcaption></figure>`
+  ).join('')}</div>`;
+};
 
 // ---------------------------------------------------------------- add a place
 function setPlacing(on) {
@@ -559,6 +656,13 @@ function bearing(spot) {
 
 el.dNav.onclick = () => selected && walkTo(selected);
 
+el.dPhoto.onclick = () => { if (selected) el.photoFile.click(); };
+el.photoFile.onchange = async () => {
+  const file = el.photoFile.files[0];
+  el.photoFile.value = '';                      // so the same file can be re-picked
+  if (file && selected) await addPhoto(selected, file);
+};
+
 // ---------------------------------------------------------------- position
 function locate() {
   if (!navigator.geolocation) return;
@@ -624,6 +728,7 @@ async function boot() {
     el.fallback.hidden = false;
   }
 
+  await loadPhotos();
   transport.start();
   render();
   renderFeed();

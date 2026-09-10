@@ -147,6 +147,21 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 }
 .k-live{color:#ff3d6e}
 
+.shots{display:flex;gap:5px;margin:10px 0 0;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.shots::-webkit-scrollbar{display:none}
+.shots figure{margin:0;position:relative;flex:none}
+.shots img{
+  display:block;width:72px;height:56px;object-fit:cover;border-radius:9px;
+  border:1px solid var(--hair-lit);background:var(--raise);
+}
+.shots figcaption{
+  position:absolute;left:4px;bottom:4px;right:4px;
+  font:400 9px/1 var(--mono);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.sheet .shots img{width:88px;height:66px}
+.noshots{margin:10px 0 0;color:var(--faint);font-size:11px}
+
 /* ---------------------------------------------------------------- panel */
 .panel{
   overflow-y:auto;overscroll-behavior:contain;

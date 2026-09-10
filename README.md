@@ -12,6 +12,13 @@ on the other device within a second.
 The brief contradicts itself twice. We resolved both with architecture rather
 than by picking a side.
 
+**Photos are contributed, not scraped.** Every place takes photos from whoever
+is standing there. They downscale to about 6 KB in the browser, persist in
+IndexedDB so they survive offline and reloads, and sync retained so a late
+joiner gets them too. We deliberately ship no stock imagery: OpenStreetMap
+carries almost no photos for individual restaurants, and generic food stock
+labelled as a specific place is a lie the demo does not need.
+
 **Anyone can add a place.** A fixed catalogue cannot express a pop-up, a busker
 or a queue worth joining, which is most of what "friends find something cool"
 means. Hit *Add a place*, click the map, name it. It syncs to your crew.
@@ -39,6 +46,12 @@ live rather than hiding it.
 15,868 nodes and 17,099 edges, all offline. Where no mapped path exists the app
 says so and gives a straight-line distance and bearing instead of drawing a line
 through buildings and calling it directions.
+
+**The world does not end.** Past the surveyed neighbourhood the Gulf runs to the
+horizon and the city sprawls out to the haze. That far field is scenery, clearly
+marked as such in the code: no markers, no shadows, no interaction. Its shape is
+not invented though. It follows the real coastline outward, so the sea stays on
+the correct side.
 
 ## How it is built
 
