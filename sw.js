@@ -1,6 +1,6 @@
 // Precache everything. The app has no network data source at all, so "works
 // with no signal" reduces to: serve the whole bundle from cache, always.
-const CACHE = 'nearby-v20';
+const CACHE = 'nearby-v21';
 const SHELL = [
   './', './index.html', './css/app.css',
   './js/app.js', './js/city.js', './js/hours.js',
@@ -8,6 +8,11 @@ const SHELL = [
   './vendor/three.module.min.js', './vendor/mqtt.min.js',
   './fonts/geist.woff2', './fonts/geist-mono.woff2',
   './manifest.webmanifest',
+  './photos/food1.jpg', './photos/food2.jpg', './photos/food3.jpg',
+  './photos/food4.jpg', './photos/food5.jpg',
+  './photos/cafe1.jpg', './photos/cafe2.jpg', './photos/cafe3.jpg',
+  './photos/bar1.jpg', './photos/bar2.jpg',
+  './photos/event1.jpg', './photos/event2.jpg',
 ];
 
 self.addEventListener('install', e => {

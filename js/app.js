@@ -50,6 +50,7 @@ let DATA, city, you = { x: 0, z: 0, real: false };
 // The baked catalogue plus anything anyone has dropped on the map since.
 const allSpots = () => DATA ? [...DATA.spots, ...Object.values(S.added)] : [];
 let filter = 'all';
+let query = '';
 let selected = null;
 let placing = false;
 let pendingAt = null;   // where the new place will land, set by clicking the map
@@ -331,6 +332,10 @@ function score(s) {
 function visible() {
   return allSpots()
     .filter(s => {
+      if (query) {
+        const hay = `${s.name} ${s.note} ${s.kind}`.toLowerCase();
+        if (!query.split(/\s+/).every(w => hay.includes(w))) return false;
+      }
       if (filter === 'all') return true;
       if (filter === 'open') return openState(s.hours)?.open === true;
       if (filter === 'saved') return !!S.saved[s.id];
@@ -428,6 +433,17 @@ $('dClose2').onclick = () => {
   city?.pullBack();
 };
 
+const search = $('search');
+$('searchBtn').onclick = () => {
+  const open = search.hasAttribute('hidden');
+  search.hidden = !open;
+  $('searchBtn').setAttribute('aria-pressed', String(open));
+  if (open) search.focus();
+  else if (query) { query = ''; search.value = ''; render(); }
+};
+search.oninput = () => { query = search.value.trim().toLowerCase(); render(); };
+search.onkeydown = e => { if (e.key === 'Escape') $('searchBtn').click(); };
+
 document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => {
   filter = b.dataset.filter;
   document.querySelectorAll('[data-filter]').forEach(o => o.setAttribute('aria-pressed', String(o === b)));
@@ -523,6 +539,23 @@ const hueOf = id => {
   return h;
 };
 
+// Seed imagery so a card is never blank before anyone has contributed. These
+// are generic stock shots by category, NOT photographs of the venue, and the
+// cover labels them "stock" so nobody is misled. A real photo from the crew
+// always wins and drops the label.
+const SEED = {
+  food:  ['food1', 'food2', 'food3', 'food4', 'food5'],
+  cafe:  ['cafe1', 'cafe2', 'cafe3'],
+  bar:   ['bar1', 'bar2'],
+  event: ['event1', 'event2'],
+  shop:  ['food3', 'cafe2'],
+  live:  ['event2', 'food1'],
+};
+const seedFor = s => {
+  const pool = SEED[s.kind] || SEED.food;
+  return `photos/${pool[hueOf(s.id) % pool.length]}.jpg`;
+};
+
 const coverHTML = s => {
   const shots = photos[s.id] || [];
   const label = `<span class="covname">${esc(s.name)}</span>`;
@@ -530,8 +563,9 @@ const coverHTML = s => {
   if (shots.length) {
     return `<div class="cover"><img src="${shots[shots.length - 1].url}" alt="${esc(s.name)}">${label}${badge}</div>`;
   }
-  return `<div class="cover art" style="--h:${hueOf(s.id)}">
-    <span class="covkind">${s.kind}</span>${label}</div>`;
+  return `<div class="cover" style="--h:${hueOf(s.id)}">
+    <img src="${seedFor(s)}" alt="" loading="lazy" onerror="this.remove();this.parentNode.classList.add('art')">
+    <span class="covkind">${s.kind}</span><span class="covstock">stock</span>${label}</div>`;
 };
 
 const shotsHTML = (spotId, limit = 6) => {
