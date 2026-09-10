@@ -118,6 +118,8 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 
 .tag.invite{color:var(--accent);border-color:rgba(110,231,183,.35)}
 .tag.add{color:var(--ink);border-color:rgba(255,255,255,.28)}
+.tag .sm{display:none}
+@media (max-width:900px){.tag .lg{display:none}.tag .sm{display:inline}}
 .tag.add[aria-pressed="true"]{background:#ff3d6e;border-color:transparent;color:#fff;font-weight:500}
 
 .hint{
@@ -279,15 +281,61 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .empty{color:var(--faint);font-size:12px}
 
 @media (max-width:900px){
-  body{overflow:auto}
+  body{overflow:auto;-webkit-text-size-adjust:100%}
   .shell{grid-template-columns:1fr;height:auto}
-  .stage{height:56vh;min-height:340px;position:sticky;top:0;z-index:1}
-  .panel{border-left:0;border-top:1px solid var(--hair)}
-  .readout{left:12px;right:12px;bottom:12px}
-  .readout dl{gap:16px}
-  .readout dd{font-size:18px}
-  .topbar{top:12px;left:12px;right:12px}
-  .sheet{right:12px;left:12px;width:auto}
+
+  /* The map used to be sticky at z-index 1 while the filter bar inside the list
+     was sticky at z-index 2, so the list painted straight through the map and
+     card titles landed on top of the skyline. On a phone the map is a normal
+     block that scrolls away with everything else: one flow, no stacking to get
+     wrong. svh, not vh, so the address bar does not eat the bottom. */
+  .stage{position:relative;z-index:0;height:50svh;min-height:280px}
+  .panel{border-left:0;border-top:1px solid var(--hair);padding:14px 14px 48px;position:relative;z-index:1}
+  .filters{position:static}
+
+  .topbar{top:10px;left:10px;right:10px;gap:7px}
+  .topbar .bezel{padding:4px;border-radius:15px}
+  .topbar .bezel>.in{padding:7px 9px;border-radius:11px}
+  .brandwrap{flex:0 0 auto}
+  .brand{font-size:13px}
+  .area{display:none}                       /* the map already says where you are */
+  .row{gap:6px;flex-wrap:wrap}
+  .net{font-size:10px;gap:5px}
+  .tag{font-size:10px;padding:6px 9px;white-space:nowrap}
+
+  /* Compact instrument strip. Four big numbers plus a paragraph of desktop
+     mouse instructions was most of the screen. */
+  .readout{left:10px;right:10px;bottom:10px;border-radius:15px;padding:4px}
+  .readout>.in{padding:9px 11px;border-radius:11px}
+  .readout dl{gap:0;display:grid;grid-template-columns:repeat(4,1fr)}
+  .readout dt{font-size:8.5px;letter-spacing:.06em}
+  .readout dd{font-size:17px;margin-top:3px}
+  .readout .origin{display:none}
+
+  /* Detail becomes a bottom sheet, thumb-reachable and full width. */
+  .sheet{left:0;right:0;bottom:0;width:auto;border-radius:18px 18px 0 0;padding:5px 5px 0;
+    max-height:76svh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .sheet>.in{border-radius:14px 14px 0 0;padding:14px 15px calc(15px + env(safe-area-inset-bottom))}
+  .sheet h2{font-size:17px}
+  .sheet .acts{flex-wrap:wrap}
+  .sheet .acts button{flex:1 1 auto;min-height:42px}
+
+  .searchbox{font-size:16px}              /* 16px stops iOS zooming on focus */
+  .card{margin-bottom:10px}
+  .cover{height:132px}
+  .covname{font-size:15px}
+  .card .acts button{min-height:40px;padding:9px 14px}
+  .feed li{padding:10px 12px}
+  .addform{width:calc(100% - 24px)}
+  .addform input{font-size:16px}
+  .hint{top:auto;bottom:calc(50svh + 12px);font-size:11px;padding:7px 13px}
+}
+
+@media (max-width:420px){
+  .topbar .row{gap:5px}
+  .tag{font-size:9.5px;padding:5px 7px}
+  .readout dd{font-size:15px}
+  .cover{height:118px}
 }
 
 @media (prefers-reduced-motion:reduce){
